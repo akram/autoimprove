@@ -83,7 +83,9 @@ Resolved scope "the template parsing engine" to:
 These are the ONLY files that will be modified. Confirm? [y/n]
 ```
 
-Once confirmed, the boundary is locked. You can also use explicit paths or globs:
+Once confirmed, the boundary is locked. `exclude` prevents the agent from touching files it should never modify — especially evaluation code. Without `exclude: eval/`, an agent could "improve" the score by modifying how it's measured rather than improving the actual code. The agent should never grade its own homework.
+
+You can also use explicit paths or globs:
 
 ```markdown
 ## Change

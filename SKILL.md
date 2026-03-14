@@ -20,6 +20,8 @@ Autonomous optimization loop. You modify files, run a check, keep improvements, 
 |---------|-------------|
 | `/autoimprove` | Run the loop on `improve.md` in cwd |
 | `/autoimprove <path>` | Run the loop on a specific improve.md |
+| `/autoimprove bootstrap` | Analyze codebase, generate tests needed for safe optimization |
+| `/autoimprove bootstrap --generate` | Create the test files (review before committing) |
 | `/autoimprove init` | Scaffold an improve.md (auto-detects repo type) |
 | `/autoimprove init --type <type>` | Scaffold for a specific domain |
 | `/autoimprove --export` | Generate agent-agnostic `program.md` |
@@ -36,7 +38,9 @@ files: <what the agent can modify>
 context: <read-only reference files>
 
 ## Check
-run: <shell command — tests + metric>
+test: <command that verifies correctness — must pass for any experiment to be kept>
+test-files: <paths to test files — read-only during the loop, mutable only during bootstrap>
+run: <command that produces the score — only runs if test passes>
 score: <how to extract the number — "SCORE: {value}" or regex or jq>
 goal: <lower | higher>
 timeout: <max time per experiment>
@@ -70,8 +74,65 @@ Confirm:
 - All files in `Change.files` exist
 - The `Check.run` command is executable
 - Git working tree is clean (no uncommitted changes)
+- If `Check.test` is specified, run it — tests must pass before the loop starts
 
 If validation fails, report the issue and stop.
+
+If tests don't exist or fail, suggest running `/autoimprove bootstrap` first.
+
+### Step 2.5: Bootstrap (when invoked via `/autoimprove bootstrap`)
+
+This is a separate pre-loop phase. It generates the test suite needed for safe optimization.
+
+**Tests are mutable during bootstrap, immutable during the loop.** These two phases never mix.
+
+#### Bootstrap Protocol
+
+1. **Analyze**: Read all files in `Change.files`. Identify:
+   - Public API surface (exported functions, methods, classes)
+   - Critical code paths (hot loops, core logic, data transformations)
+   - Edge cases (nil/null handling, empty inputs, boundary values)
+   - Existing test coverage (check `Check.test-files` if specified)
+
+2. **Gap analysis**: Report what's tested and what's not. Categorize gaps:
+   - **Correctness tests** (required): Does the code produce the right output?
+   - **Regression tests** (required): Will the agent know if it breaks something?
+   - **Property tests** (nice to have): Invariants that should hold across any change
+   - **Benchmark tests** (if applicable): Baselines for performance claims
+
+3. **Generate** (when `--generate` is passed):
+   - Write test files to the paths specified in `Check.test-files`
+   - Run the tests to confirm they pass on the current unmodified code
+   - If any test fails, fix it — tests must pass on the CURRENT code before optimization
+   - Present the generated tests for review
+
+4. **Commit**: After human review, commit the test files:
+   `git commit -m "autoimprove bootstrap: add test suite for optimization safety"`
+
+5. **Report**: Print a readiness summary:
+   ```
+   Bootstrap complete.
+     Test files: test/variable_test.rb, test/parser_test.rb
+     Tests: 47 passing
+     Coverage: public API 100%, edge cases 85%, properties 3
+     Ready for: /autoimprove
+   ```
+
+#### What makes a good test suite for autoimprove
+
+The tests don't need to be exhaustive — they need to catch the kinds of breakage
+an optimization agent is likely to introduce:
+
+- **Output equivalence**: Same input produces same output (the agent might change internals)
+- **Error handling**: Errors still raised correctly (the agent might remove safety checks for speed)
+- **Edge cases**: Empty, nil, very large, unicode, special characters (fast paths often skip these)
+- **API contracts**: Public method signatures, return types, side effects unchanged
+- **Concurrency safety**: If applicable, thread-safety invariants hold
+
+Tests should NOT:
+- Assert on performance (that's what the score is for)
+- Assert on internal implementation details (the agent SHOULD change those)
+- Be flaky or timing-dependent (false failures poison the loop)
 
 ### Step 3: Baseline
 
@@ -101,11 +162,18 @@ WHILE stopping conditions not met:
      - Review past experiments to avoid repeating failures
      - Review past kept experiments to build on what worked
   3. Stage and commit: git commit -m "autoimprove: <short title>"
-  4. Run the check command (with timeout)
-  5. Extract the score
+  4. Run the test command (if Check.test is specified)
+  5. IF tests fail:
+       → git reset --hard HEAD~1
+       → Log as "test_failed"
+       → consecutive_failures += 1
+       → Print: "✗ Experiment {id}: {title} — tests failed"
+       → CONTINUE to next iteration
+  6. Run the score command (Check.run) with timeout
+  7. Extract the score
 
-  6. DECIDE:
-     IF check command failed (non-zero exit, timeout):
+  8. DECIDE:
+     IF score command failed (non-zero exit, timeout):
        → git reset --hard HEAD~1
        → Log as "error"
        → consecutive_failures += 1
@@ -135,7 +203,8 @@ When the loop ends, print:
 Autoimprove complete.
   Experiments: 47
   Kept: 12
-  Discarded: 31
+  Discarded: 25
+  Test failures: 6
   Errors: 4
   Baseline: 1.230 → Best: 0.847 (-31.1%)
   Duration: 3h 42m
@@ -165,7 +234,7 @@ Each experiment is saved as JSON in `.autoimprove/experiments/`:
 {
   "id": 1,
   "title": "reduce allocations in variable parsing",
-  "status": "kept",
+  "status": "kept | discarded | test_failed | error",
   "commit": "a1b2c3d",
   "score": 0.847,
   "baseline_score": 1.230,
@@ -181,12 +250,14 @@ Each experiment is saved as JSON in `.autoimprove/experiments/`:
 
 <HARD-RULES>
 - NEVER modify files outside the `Change.files` list
+- NEVER modify test files during the optimization loop — tests are immutable guardrails
 - NEVER modify the check command or scoring mechanism
 - NEVER skip the git commit before running the check
 - ALWAYS log every experiment, including failures and errors
 - ALWAYS read past experiments before proposing a new change
 - ALWAYS git reset discarded experiments — leave the tree clean
-- If the check command includes tests, a test failure means discard — no exceptions
+- Test failure means immediate discard — no exceptions, no "but the score improved"
+- If many experiments fail tests, the change strategy is wrong — try a different approach
 - Complexity must pay for itself: 20 lines of hack for 0.001 improvement is NOT worth keeping
 - Deleting code for equal results IS worth keeping
 </HARD-RULES>
@@ -228,7 +299,9 @@ files: src/handlers/checkout.go, src/db/queries.go
 context: src/, test/
 
 ## Check
-run: go test ./... && hey -n 1000 http://localhost:8080/checkout
+test: go test ./...
+test-files: test/
+run: hey -n 1000 http://localhost:8080/checkout
 score: Requests/sec:\s+([\d.]+)
 goal: higher
 timeout: 3m
@@ -511,6 +584,8 @@ files: train.py
 context: data/train.csv, data/test.csv, evaluate.py
 
 ## Check
+test: python -m pytest tests/ -x
+test-files: tests/
 run: python train.py && python evaluate.py
 score: auc_roc: ([\d.]+)
 goal: higher

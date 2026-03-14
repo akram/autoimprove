@@ -1,0 +1,309 @@
+# Autoimprove Examples
+
+Complete `improve.md` templates for different domains. Use `/autoimprove init --type <type>` to scaffold these.
+
+## Types
+
+| Type | What it optimizes | Typical metric | Typical budget |
+|------|-------------------|----------------|----------------|
+| `perf` | Code performance | Requests/sec, time, allocations | 4-8h |
+| `ml` | ML training | Validation loss, accuracy, BPB | 8-24h |
+| `docker` | Container image | Image size in bytes | 1-2h |
+| `k8s` | Cluster health | Running pod count, error rate | 1-2h |
+| `prompt` | LLM prompt quality | F1, accuracy, similarity score | 1-2h |
+| `sql` | Query performance | Execution time in ms | 1-2h |
+| `frontend` | Bundle size | Bundle bytes | 2-4h |
+| `ci` | CI/build speed | Build time in seconds | 2-4h |
+
+## perf — Code Performance
+
+```markdown
+# autoimprove: faster-<component>
+
+## Change
+files: <hot-path source files>
+context: <test files, benchmarks>
+
+## Check
+run: <test suite> && <benchmark command>
+score: <benchmark metric extraction>
+goal: lower
+timeout: 5m
+
+## Stop
+budget: 4h
+stale: 15
+
+## Instructions
+
+Focus on reducing allocations and avoiding unnecessary work in hot paths.
+
+Patterns to try:
+- Fast-path with fallback — handle common cases with optimized code, fall back to general path for edge cases
+- Reduce object allocations — reuse buffers, avoid temporary arrays/maps
+- Byte-level operations instead of string operations in parsing
+- Cache repeated computations (small integer to_s, frozen strings)
+- Splat-free method dispatch for frequently called methods
+- instance_of? over is_a? in hot loops (skip inheritance chain)
+
+What NOT to try:
+- Don't change the public API
+- Don't add external dependencies
+- Don't sacrifice readability for marginal gains (<0.1%)
+- Complexity must pay for itself
+```
+
+## ml — ML Training
+
+```markdown
+# autoimprove: better-<model>
+
+## Change
+files: train.py
+context: prepare.py, data/
+
+## Check
+run: python train.py
+score: SCORE: {value}
+goal: lower
+timeout: 5m
+
+## Stop
+budget: 8h
+stale: 20
+
+## Instructions
+
+Improve validation loss within the fixed training time budget.
+
+Patterns to try:
+- Architecture (attention patterns, activation functions, normalization layers)
+- Optimizer (learning rate schedules, weight decay, momentum)
+- Embeddings (positional encoding variants, value embeddings)
+- Training dynamics (warmup, gradient clipping, batch size)
+- Regularization (dropout, label smoothing, data augmentation)
+
+What NOT to try:
+- Don't modify the data pipeline or evaluation
+- Don't add dependencies
+- Simplicity over marginal gains
+- Deleting code for equal results IS an improvement
+```
+
+## docker — Container Image Size
+
+```markdown
+# autoimprove: slim-<image>
+
+## Change
+files: Dockerfile
+context: <build context files>
+
+## Check
+run: docker build -t test . && echo SCORE: $(docker image inspect test --format '{{.Size}}')
+goal: lower
+timeout: 5m
+
+## Stop
+rounds: 30
+
+## Instructions
+
+Reduce image size without breaking runtime behavior.
+
+Patterns to try:
+- Multi-stage builds (build stage + minimal runtime stage)
+- Alpine or distroless base images
+- Combine RUN layers to reduce intermediate layer count
+- Remove build tools, caches, and dev deps from final stage
+- Use scratch for static binaries
+- .dockerignore to exclude unnecessary build context
+
+What NOT to try:
+- Don't remove runtime dependencies
+- Don't use UPX (breaks debugging and coredumps)
+- The app must still start and pass health checks
+```
+
+## k8s — Kubernetes Health
+
+```markdown
+# autoimprove: fix-<issue>
+
+## Change
+files: <deployment/service YAML files>
+context: k8s/
+
+## Check
+run: kubectl apply -f k8s/ && sleep 60 && <health check command>
+score: SCORE: {value}
+goal: higher
+timeout: 3m
+
+## Stop
+target: <desired healthy count>
+rounds: 20
+
+## Instructions
+
+Get pods to healthy Running state.
+
+Patterns to try:
+- Resource requests and limits (memory/CPU)
+- Liveness and readiness probe tuning
+- Pod anti-affinity rules
+- Environment variable and config fixes
+- HPA min/max replicas and target utilization
+- Init container dependencies
+
+What NOT to try:
+- Don't change container images
+- Don't delete and recreate namespaces
+- Don't modify service mesh config
+- One manifest change per experiment
+```
+
+## prompt — Prompt Engineering
+
+```markdown
+# autoimprove: better-<task>-prompt
+
+## Change
+files: prompts/<task>.txt
+context: eval/golden_set.jsonl
+
+## Check
+run: python eval/run_eval.py --prompt prompts/<task>.txt
+score: <metric>: ([\d.]+)
+goal: higher
+timeout: 2m
+
+## Stop
+budget: 1h
+target: 0.95
+
+## Instructions
+
+Improve prompt accuracy on the evaluation set.
+
+Patterns to try:
+- Few-shot examples (pick diverse, representative cases)
+- Chain-of-thought before final answer
+- Structured output format (JSON with typed fields)
+- Negative examples (what NOT to do)
+- Simplify — shorter prompts often outperform verbose ones
+- Role/persona framing
+
+What NOT to try:
+- Don't modify the evaluation script
+- Don't overfit to specific test cases
+- Keep prompt under 2000 tokens
+- Don't use model-specific tricks that break portability
+```
+
+## sql — Query Performance
+
+```markdown
+# autoimprove: faster-<query>
+
+## Change
+files: queries/<name>.sql
+context: schema.sql, indexes.sql
+
+## Check
+run: psql -f queries/<name>.sql -c '\timing' 2>&1
+score: Time: ([\d.]+) ms
+goal: lower
+timeout: 1m
+
+## Stop
+stale: 10
+
+## Instructions
+
+Reduce query time without changing result set.
+
+Patterns to try:
+- Replace correlated subqueries with JOINs
+- Use EXISTS instead of IN for existence checks
+- Add covering index hints via query restructuring
+- Partition large scans with range predicates
+- Materialize expensive CTEs if they're scanned multiple times
+
+What NOT to try:
+- Don't modify schema or indexes
+- Results must be identical (same rows, same order)
+- Don't use database-specific extensions not in the schema
+```
+
+## frontend — Bundle Size
+
+```markdown
+# autoimprove: smaller-<app>
+
+## Change
+files: src/index.ts, package.json, <build config>
+context: src/
+
+## Check
+run: npm run build && echo SCORE: $(stat -f%z dist/index.js)
+goal: lower
+timeout: 2m
+
+## Stop
+budget: 2h
+
+## Instructions
+
+Reduce production bundle size.
+
+Patterns to try:
+- Dynamic imports for routes and heavy components
+- Replace heavy libraries with lighter alternatives (moment→dayjs, lodash→lodash-es)
+- Tree shaking configuration
+- Remove unused exports
+- Code splitting by route or feature
+- Externalize large dependencies
+
+What NOT to try:
+- Don't remove features
+- Don't break lazy loading
+- Don't switch build tools
+- App must still work in the browser
+```
+
+## ci — Build Speed
+
+```markdown
+# autoimprove: faster-<pipeline>
+
+## Change
+files: .github/workflows/ci.yml, <build config files>
+context: src/, package.json
+
+## Check
+run: time <build command> 2>&1 | tail -1
+score: real\s+(\d+\.\d+)
+goal: lower
+timeout: 10m
+
+## Stop
+stale: 15
+
+## Instructions
+
+Reduce build/CI time without skipping quality checks.
+
+Patterns to try:
+- Parallel jobs in CI workflow
+- Caching (node_modules, build artifacts, docker layers)
+- Incremental compilation
+- Split test suites into parallel shards
+- Conditional steps (skip unchanged paths)
+
+What NOT to try:
+- Don't skip tests or linting
+- Don't remove type checking
+- Don't change output artifacts
+- Pipeline must remain correct
+```

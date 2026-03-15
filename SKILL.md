@@ -22,6 +22,7 @@ Autonomous optimization loop. You modify files, run a check, keep improvements, 
 | `/autoimprove <path>` | Run the loop on a specific improve.md |
 | `/autoimprove bootstrap` | Analyze codebase, generate tests needed for safe optimization |
 | `/autoimprove bootstrap --generate` | Create the test files (review before committing) |
+| `/autoimprove eval-init` | Scaffold an eval script and golden set for domains that need them |
 | `/autoimprove init` | Scaffold an improve.md (auto-detects repo type) |
 | `/autoimprove init --type <type>` | Scaffold for a specific domain |
 | `/autoimprove --export` | Generate agent-agnostic `program.md` |
@@ -43,10 +44,12 @@ test-files: <paths to test files — read-only during the loop, mutable only dur
 run: <command that produces the score — only runs if test passes>
 score: <how to extract the number — "SCORE: {value}" or regex or jq>
 goal: <lower | higher>
+guard: <optional — regex and threshold for metrics that must not regress, e.g. "error_rate: ([\d.]+) < 0.05">
+keep_if_equal: <true | false — keep changes that don't regress even if they don't improve, default false>
 timeout: <max time per experiment>
 
 ## Stop
-budget: <total wall-clock limit>
+budget: <total wall-clock limit — counts from first experiment, not from setup>
 rounds: <max experiments>
 target: <stop when score reaches this>
 stale: <stop after N failures in a row>
@@ -93,6 +96,8 @@ Read the `improve.md` file. Extract all structured fields from the headers. Ever
 If validation fails, report the issue and stop.
 
 If tests don't exist or fail, suggest running `/autoimprove bootstrap` first.
+
+If `Check.run` doesn't exist or fails on the unmodified code, suggest running `/autoimprove eval-init` first.
 
 ### Step 2.5: Bootstrap (when invoked via `/autoimprove bootstrap`)
 
@@ -202,9 +207,82 @@ Tests should NOT:
 - Be flaky or timing-dependent (false failures poison the loop)
 - Be so numerous they dominate experiment time (keep test suite under 30s)
 
+### Step 2.6: Eval Init (when invoked via `/autoimprove eval-init`)
+
+This phase scaffolds the evaluation harness — the check command and scoring mechanism.
+Not every domain needs this. Use the table below to decide.
+
+#### Which domains need eval scaffolding?
+
+| Domain | Needs golden set? | Needs eval script? | Why |
+|---|---|---|---|
+| `rag` | Yes | Yes | "Good answer" is subjective — needs labeled Q&A pairs |
+| `prompt` | Yes | Yes | Output quality requires human-labeled expected outputs |
+| `automl` | Yes | Yes | Model accuracy needs labeled train/test data |
+| `ml` | No | Usually exists | Training scripts typically emit loss/metrics already |
+| `perf` | No | No | Benchmarks produce objective numbers |
+| `docker` | No | No | Image size in bytes is objective |
+| `frontend` | No | No | Bundle size in bytes is objective |
+| `ci` | No | No | Build time is objective |
+| `sql` | No | No | Query time is objective |
+| `k8s` | No | No | Pod health is objective |
+
+#### Eval Init Protocol (for domains that need it)
+
+1. **Detect domain**: Read the codebase and `improve.md` to determine the domain type.
+
+2. **Scaffold eval script**: Generate a skeleton evaluation script that:
+   - Imports the system under test
+   - Loads a golden set from a JSON file
+   - Runs each test case through the system
+   - Computes appropriate metrics for the domain:
+     - Search/RAG: precision, recall, MRR, NDCG, answer relevancy
+     - ML/AutoML: AUC-ROC, F1, accuracy, confusion matrix
+     - Prompts: F1, exact match, semantic similarity
+   - Prints `SCORE: <combined_value>`
+
+3. **Build golden set interactively**:
+   - Run the system with sample inputs from the domain
+   - Present the outputs to the user
+   - Ask: "Is this a good result? What should the correct output be?"
+   - Save labeled results as the golden set
+   - Aim for 20-50 test cases (enough for statistical significance, few enough to run fast)
+
+4. **Validate golden set**: After creation, verify that:
+   - Every expected result actually exists in the data/system (no impossible expectations)
+   - The eval script runs without errors on the current code
+   - The baseline score is reasonable (not 0.0 or 1.0 — both suggest a broken eval)
+   - Error rate on the baseline run is below 20% (above that, the eval is unreliable)
+
+5. **Report**:
+   ```
+   Eval init complete.
+     Domain: rag
+     Golden set: eval/golden_set.json (25 queries)
+     Eval script: eval/run_eval.py
+     Baseline score: 0.4230
+     Error rate: 0.0%
+     Ready for: /autoimprove
+   ```
+
 ### Step 3: Baseline
 
-Run the check command. Extract the score. Save to `.autoimprove/baseline.json`:
+Run the check command. Extract the score.
+
+**Pre-loop error check**: If the eval produces any errors (non-zero error rate), report them:
+```
+WARNING: 3 of 20 queries produced errors.
+  - "product-market fit": OperationalError: no such column: market
+  - "C++ engineering": syntax error in query
+  - "cost/benefit analysis": timeout
+
+Error rate: 15%. Recommend fixing these before starting the loop.
+Continue anyway? [y/n]
+```
+
+If error rate > 20%, REFUSE to start the loop. Too many failures make the score unreliable.
+
+Save baseline to `.autoimprove/baseline.json`:
 
 ```json
 {
@@ -216,20 +294,33 @@ Run the check command. Extract the score. Save to `.autoimprove/baseline.json`:
 
 Print: `Baseline established: <score>`
 
+**The budget timer starts NOW**, not during setup. Bootstrap, eval-init, and baseline establishment are excluded from the budget.
+
 ### Step 4: Loop
 
 ```
 current_baseline = baseline score
 consecutive_failures = 0
 experiment_id = 1
+start_time = now()  ← budget timer starts here
 
 WHILE stopping conditions not met:
   1. Read past experiments from .autoimprove/experiments/
+     - Skip experiments whose "supersedes" list includes them (obsolete approaches)
+     - Focus on the most recent kept experiments for building on what worked
+     - Review failures to avoid repeating the same ideas
+
   2. Propose a change to the target files
      - Use the Instructions section for domain guidance
      - Review past experiments to avoid repeating failures
      - Review past kept experiments to build on what worked
-  3. Stage and commit: git commit -m "autoimprove: <short title>"
+
+  3. Stage and commit:
+     - git add <changed files>
+     - git commit -m "autoimprove: <short title>"
+     - VERIFY: run `git rev-parse HEAD` — it MUST differ from the previous HEAD
+     - If commit failed or HEAD didn't change, something is wrong — stop and report
+
   4. Run the test command (if Check.test is specified)
   5. IF tests fail:
        → git reset --hard HEAD~1
@@ -237,8 +328,18 @@ WHILE stopping conditions not met:
        → consecutive_failures += 1
        → Print: "✗ Experiment {id}: {title} — tests failed"
        → CONTINUE to next iteration
+
   6. Run the score command (Check.run) with timeout
   7. Extract the score
+
+  7.5. Check guard metrics (if Check.guard is specified):
+       → Extract guard metric value from stdout
+       → IF guard threshold violated (e.g., error_rate > 0.05):
+         → git reset --hard HEAD~1
+         → Log as "guard_failed"
+         → consecutive_failures += 1
+         → Print: "✗ Experiment {id}: {title} — guard violated: {guard_name} = {value}"
+         → CONTINUE to next iteration
 
   8. DECIDE:
      IF score command failed (non-zero exit, timeout):
@@ -252,15 +353,20 @@ WHILE stopping conditions not met:
        → consecutive_failures = 0
        → Print: "✓ Experiment {id}: {title} — {score} ({delta_pct}%)"
 
+     ELIF score equal AND keep_if_equal is true:
+       → Log as "kept_equal"
+       → consecutive_failures = 0
+       → Print: "≈ Experiment {id}: {title} — {score} (kept, equal score)"
+
      ELSE:
        → git reset --hard HEAD~1
        → Log as "discarded"
        → consecutive_failures += 1
        → Print: "✗ Experiment {id}: {title} — {score} (no improvement)"
 
-  7. Save experiment to .autoimprove/experiments/{NNN}-{slug}.json
-  8. experiment_id += 1
-  9. Check stopping conditions
+  9. Save experiment to .autoimprove/experiments/{NNN}-{slug}.json
+  10. experiment_id += 1
+  11. Check stopping conditions
 ```
 
 ### Step 5: Summary
@@ -271,9 +377,11 @@ When the loop ends, print:
 Autoimprove complete.
   Experiments: 47
   Kept: 12
-  Discarded: 25
+  Kept (equal): 3
+  Discarded: 22
   Test failures: 6
-  Errors: 4
+  Guard failures: 2
+  Errors: 2
   Baseline: 1.230 → Best: 0.847 (-31.1%)
   Duration: 3h 42m
 ```
@@ -281,7 +389,7 @@ Autoimprove complete.
 ## Stopping Conditions
 
 The loop stops when ANY of these is true:
-- `budget` time has elapsed
+- `budget` time has elapsed (measured from first experiment, not from setup)
 - `rounds` experiments have been run
 - Score has reached `target`
 - `stale` consecutive experiments failed to improve
@@ -294,6 +402,21 @@ Try these in order:
 2. **Regex**: if `score:` field contains a regex pattern (has parentheses), apply it to stdout
 3. **jq**: if `score:` field starts with `.`, treat as jq expression applied to stdout as JSON
 
+## Guard Metrics
+
+Optional secondary metrics that must not regress. Format in improve.md:
+
+```markdown
+guard: error_rate: ([\d.]+) < 0.05
+```
+
+This means: extract `error_rate` from stdout using the regex, and reject the experiment if the value exceeds 0.05. Guard failures are logged as `"guard_failed"` and count toward consecutive failures.
+
+Use guards to prevent the agent from improving one metric by tanking another. Common examples:
+- `guard: error_rate: ([\d.]+) < 0.05` — search errors stay below 5%
+- `guard: latency_p99: ([\d.]+) < 500` — tail latency stays under 500ms
+- `guard: memory_mb: ([\d.]+) < 1024` — memory usage stays under 1GB
+
 ## Experiment Logging
 
 Each experiment is saved as JSON in `.autoimprove/experiments/`:
@@ -302,7 +425,7 @@ Each experiment is saved as JSON in `.autoimprove/experiments/`:
 {
   "id": 1,
   "title": "reduce allocations in variable parsing",
-  "status": "kept | discarded | test_failed | error",
+  "status": "kept | kept_equal | discarded | test_failed | guard_failed | error",
   "commit": "a1b2c3d",
   "score": 0.847,
   "baseline_score": 1.230,
@@ -310,24 +433,43 @@ Each experiment is saved as JSON in `.autoimprove/experiments/`:
   "duration_s": 287,
   "reasoning": "Variable parsing allocates a new array per filter. Switching to byte-level scanning avoids the allocation entirely.",
   "files_changed": ["lib/liquid/variable.rb"],
+  "supersedes": [],
   "timestamp": "2026-03-14T10:23:00Z"
 }
 ```
+
+### The `supersedes` field
+
+When an experiment fundamentally replaces the approach from a previous experiment, set `supersedes` to the list of experiment IDs that are now obsolete:
+
+```json
+{
+  "id": 3,
+  "title": "Replace weighted merge with RRF",
+  "supersedes": [2],
+  "reasoning": "RRF replaces weighted score merging entirely. Weight tuning (exp 2) is no longer relevant."
+}
+```
+
+When reading past experiments, skip any whose ID appears in a later kept experiment's `supersedes` list. This prevents wasting rounds on variations of discarded approaches.
 
 ## Rules
 
 <HARD-RULES>
 - NEVER modify files outside the resolved `Change.scope`
 - NEVER modify test files during the optimization loop — tests are immutable guardrails
-- NEVER modify the check command or scoring mechanism
+- NEVER modify the check command, eval script, golden set, or scoring mechanism
 - NEVER skip the git commit before running the check
+- NEVER proceed to eval without verifying HEAD changed (confirms commit succeeded)
 - ALWAYS log every experiment, including failures and errors
 - ALWAYS read past experiments before proposing a new change
+- ALWAYS skip superseded experiments when reading the log
 - ALWAYS git reset discarded experiments — leave the tree clean
 - Test failure means immediate discard — no exceptions, no "but the score improved"
+- Guard failure means immediate discard — secondary metrics must not regress
 - If many experiments fail tests, the change strategy is wrong — try a different approach
 - Complexity must pay for itself: 20 lines of hack for 0.001 improvement is NOT worth keeping
-- Deleting code for equal results IS worth keeping
+- Deleting code for equal results IS worth keeping (use keep_if_equal: true)
 </HARD-RULES>
 
 ## Init Templates
@@ -346,7 +488,9 @@ Detection heuristics:
 - `package.json` with build script → `frontend`
 - `.github/workflows/` → `ci`
 
-See `references/examples.md` for all 8 templates.
+For domains that need eval scaffolding (rag, prompt, automl), also suggest running `/autoimprove eval-init` after init.
+
+See `references/examples.md` for all templates.
 
 ## Export Mode
 
@@ -373,6 +517,7 @@ test-files: test/
 run: hey -n 1000 http://localhost:8080/checkout
 score: Requests/sec:\s+([\d.]+)
 goal: higher
+guard: latency_p99: ([\d.]+) < 500
 timeout: 3m
 
 ## Stop
@@ -406,6 +551,7 @@ scope: Dockerfile
 ## Check
 run: docker build -t test . && echo SCORE: $(docker image inspect test --format '{{.Size}}')
 goal: lower
+keep_if_equal: true
 timeout: 5m
 
 ## Stop
@@ -439,6 +585,7 @@ scope: prompts/extract.txt
 run: python eval/run_eval.py --prompt prompts/extract.txt
 score: f1: ([\d.]+)
 goal: higher
+guard: exact_match: ([\d.]+) > 0.5
 timeout: 2m
 
 ## Stop
@@ -510,6 +657,7 @@ exclude: prepare.py, data/
 run: python train.py
 score: SCORE: {value}
 goal: lower
+keep_if_equal: true
 timeout: 5m
 
 ## Stop
@@ -655,6 +803,7 @@ test-files: tests/
 run: python train.py && python evaluate.py
 score: auc_roc: ([\d.]+)
 goal: higher
+guard: f1_score: ([\d.]+) > 0.6
 timeout: 3m
 
 ## Stop
@@ -726,6 +875,8 @@ test-files: tests/
 run: python eval/run_eval.py
 score: answer_relevancy: ([\d.]+)
 goal: higher
+guard: error_rate: ([\d.]+) < 0.1
+keep_if_equal: true
 timeout: 5m
 
 ## Stop

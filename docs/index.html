@@ -299,11 +299,9 @@
         <div class="red-bar"></div>
         <p>Part config, part prompt. Describes what to change, how to measure, and when to stop.</p>
         <pre><code class="language-markdown"># autoimprove: make-it-faster
-
 ## Change
 scope: the checkout handler and its database queries
 exclude: test/, vendor/
-
 ## Check
 test: go test ./...
 run: go test -bench=. -benchmem
@@ -312,14 +310,11 @@ goal: lower
 guard: allocs/op: ([\d.]+) < 500
 keep_if_equal: true
 timeout: 3m
-
 ## Stop
 budget: 4h
 stale: 15
-
 ## Instructions
-Reduce allocations in hot paths.
-Try buffer reuse, fast-path patterns, byte-level operations.</code></pre>
+Reduce allocations in hot paths. Try buffer reuse, fast-path patterns.</code></pre>
       </section>
 
       <!-- NATURAL LANGUAGE SCOPE -->
@@ -334,7 +329,6 @@ exclude: test/, benchmark/</code></pre>
   - lib/liquid/parser.rb
   - lib/liquid/lexer.rb
   - lib/liquid/variable.rb
-
 These are the ONLY files that will be modified. Confirm? [y/n]</code></pre>
         <p><span class="inline-code">exclude</span> prevents the agent from grading its own homework.</p>
       </section>
@@ -357,12 +351,10 @@ These are the ONLY files that will be modified. Confirm? [y/n]</code></pre>
             <p>Secondary metrics that must not regress. Prevents improving speed by breaking reliability.</p>
           </div>
         </div>
-        <pre><code class="language-markdown">## Check
-test: go test ./...                     # gate
-run: go test -bench=. -benchmem        # score
+        <pre><code class="language-markdown">test: go test ./...                  # gate
+run: go test -bench=. -benchmem     # score
 score: ns/op:\s+([\d.]+)
-goal: lower
-guard: allocs/op: ([\d.]+) < 500       # guard</code></pre>
+guard: allocs/op: ([\d.]+) < 500    # guard</code></pre>
       </section>
 
       <!-- BOOTSTRAP -->
@@ -402,11 +394,7 @@ guard: allocs/op: ([\d.]+) < 500       # guard</code></pre>
             <p>Needs labeled expected outputs. Use <span class="inline-code">eval-init</span> to scaffold.</p>
           </div>
         </div>
-        <pre><code class="language-bash">/autoimprove eval-init
-# → Runs system with sample inputs
-# → Asks you to label results
-# → Builds golden set + eval script
-# → Validates: no impossible expectations, baseline isn't 0 or 1</code></pre>
+        <pre><code class="language-bash">/autoimprove eval-init   # scaffold golden set + eval script interactively</code></pre>
       </section>
 
       <!-- 10 DOMAINS -->
@@ -438,11 +426,9 @@ guard: allocs/op: ([\d.]+) < 500       # guard</code></pre>
         <h2>Example: performance</h2>
         <div class="red-bar"></div>
         <pre><code class="language-markdown"># autoimprove: faster-checkout-api
-
 ## Change
 scope: the checkout handler and its database queries
 exclude: test/, vendor/
-
 ## Check
 test: go test ./...
 run: hey -n 1000 http://localhost:8080/checkout
@@ -450,14 +436,10 @@ score: Requests/sec:\s+([\d.]+)
 goal: higher
 guard: latency_p99: ([\d.]+) < 500
 timeout: 3m
-
 ## Stop
-budget: 4h
-stale: 15
-
+budget: 4h | stale: 15
 ## Instructions
-Focus on reducing latency. Try query batching,
-connection pooling, response caching, smaller structs.
+Try query batching, connection pooling, response caching.
 Don't change the API contract or add dependencies.</code></pre>
       </section>
 
@@ -466,11 +448,9 @@ Don't change the API contract or add dependencies.</code></pre>
         <h2>Example: RAG pipeline</h2>
         <div class="red-bar"></div>
         <pre><code class="language-markdown"># autoimprove: better-rag-answers
-
 ## Change
 scope: the RAG pipeline — chunking, retrieval, generation
 exclude: data/, eval/
-
 ## Check
 test: python -m pytest tests/test_pipeline.py -x
 run: python eval/run_eval.py
@@ -479,15 +459,11 @@ goal: higher
 guard: error_rate: ([\d.]+) < 0.1
 keep_if_equal: true
 timeout: 5m
-
 ## Stop
-budget: 6h
-target: 0.92
-
+budget: 6h | target: 0.92
 ## Instructions
-Try: chunk size tuning, hybrid search (BM25 + dense),
-cross-encoder reranking, query expansion, structured
-context presentation, chain-of-thought generation.</code></pre>
+Try: chunk size tuning, hybrid search, cross-encoder reranking,
+query expansion, chain-of-thought generation.</code></pre>
       </section>
 
       <!-- EXAMPLE: AUTOML -->
@@ -495,11 +471,9 @@ context presentation, chain-of-thought generation.</code></pre>
         <h2>Example: tabular ML</h2>
         <div class="red-bar"></div>
         <pre><code class="language-markdown"># autoimprove: better-churn-model
-
 ## Change
 scope: the training pipeline
 exclude: data/, evaluate.py
-
 ## Check
 test: python -m pytest tests/ -x
 run: python train.py && python evaluate.py
@@ -507,15 +481,11 @@ score: auc_roc: ([\d.]+)
 goal: higher
 guard: f1_score: ([\d.]+) > 0.6
 timeout: 3m
-
 ## Stop
-budget: 4h
-target: 0.95
-
+budget: 4h | target: 0.95
 ## Instructions
 Try: ratio features, rolling aggregates, target encoding,
-XGBoost vs LightGBM vs CatBoost, model stacking,
-SMOTE for class imbalance, correlation pruning.</code></pre>
+XGBoost vs LightGBM vs CatBoost, model stacking.</code></pre>
         <p>Goes beyond AutoML: the agent can engineer features, rewrite preprocessing, and try novel model combinations.</p>
       </section>
 
@@ -523,7 +493,7 @@ SMOTE for class imbalance, correlation pruning.</code></pre>
       <section data-background="#000">
         <h2>Real-world test</h2>
         <div class="red-bar"></div>
-        <p>Applied to <strong>podcast-search-mcp</strong>: hybrid search over 44K chunks from 301 podcast episodes.</p>
+        <p>Applied to a <strong>RAG-powered search engine</strong>: hybrid search over 44K chunks from 301 documents.</p>
         <div class="stat-row">
           <div class="stat"><div class="number">0.42</div><div class="label">baseline</div></div>
           <div class="stat"><div class="number">0.44</div><div class="label">final</div></div>
@@ -534,12 +504,12 @@ SMOTE for class imbalance, correlation pruning.</code></pre>
         <table>
           <thead><tr><th>#</th><th>Experiment</th><th>Result</th></tr></thead>
           <tbody>
-            <tr><td>1</td><td>Fix FTS5 query sanitization</td><td><span style="color:#4CAF50">kept +0.35%</span></td></tr>
+            <tr><td>1</td><td>Fix keyword query sanitization</td><td><span style="color:#4CAF50">kept +0.35%</span></td></tr>
             <tr><td>2</td><td>Adjust hybrid weights + fetch limit</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
             <tr><td>3</td><td>Reciprocal Rank Fusion (RRF)</td><td><span style="color:#4CAF50">kept +3.6%</span></td></tr>
-            <tr><td>4</td><td>Overlap boost</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
-            <tr><td>5</td><td>Guest diversity limit</td><td><span style="color:#4CAF50">kept (equal)</span></td></tr>
-            <tr><td>6</td><td>Lower RRF_K + higher fetch</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
+            <tr><td>4</td><td>Overlap boost for dual-list results</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
+            <tr><td>5</td><td>Result diversity limit</td><td><span style="color:#4CAF50">kept (equal)</span></td></tr>
+            <tr><td>6</td><td>Lower RRF constant + higher fetch</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
           </tbody>
         </table>
       </section>
@@ -555,7 +525,7 @@ SMOTE for class imbalance, correlation pruning.</code></pre>
           </div>
           <div class="card">
             <h3>Tests catch real bugs</h3>
-            <p>Goal-aware bootstrap caught an FTS5 crash on hyphenated queries before optimization started. The agent never would have found it by tuning scores.</p>
+            <p>Goal-aware bootstrap caught a crash on hyphenated queries before optimization started. The agent never would have found it by tuning scores.</p>
           </div>
         </div>
         <div class="two-col" style="margin-top: 0.5em;">
@@ -575,19 +545,11 @@ SMOTE for class imbalance, correlation pruning.</code></pre>
         <h2>Agent-agnostic</h2>
         <div class="red-bar"></div>
         <p>The skill runs in Claude Code. The protocol runs anywhere.</p>
-        <pre><code class="language-bash"># Claude Code (interactive)
-/autoimprove
-
-# Claude Code (headless overnight)
-claude -p "run /autoimprove on improve.md"
-
-# Export for other agents
-/autoimprove --export    # generates program.md
-
-# Any agent can follow it
-codex -p "follow program.md"
-gemini -p "follow program.md"
-aider --message "follow program.md"</code></pre>
+        <pre><code class="language-bash">/autoimprove                                  # Claude Code (interactive)
+claude -p "run /autoimprove on improve.md"    # headless overnight
+/autoimprove --export                         # generates program.md
+codex -p "follow program.md"                  # any agent can follow it
+gemini -p "follow program.md"</code></pre>
       </section>
 
       <!-- AUTOML COMPARISON -->

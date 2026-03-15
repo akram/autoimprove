@@ -377,24 +377,22 @@ guard: allocs/op: ([\d.]+) < 500    # guard</code></pre>
         <pre><code class="language-bash">/autoimprove bootstrap --generate</code></pre>
       </section>
 
-      <!-- EVAL INIT -->
+      <!-- AUTO-GUIDED SETUP -->
       <section data-background="#000">
-        <h2>Eval init</h2>
+        <h2>Auto-guided setup</h2>
         <div class="red-bar"></div>
-        <p>Some domains have objective metrics (bytes, seconds). Others need human judgment.</p>
-        <div class="two-col">
-          <div class="card">
-            <h3>Objective (no eval needed)</h3>
-            <p>perf, docker, frontend, ci, sql, k8s</p>
-            <p>The benchmark produces the score directly.</p>
-          </div>
-          <div class="card">
-            <h3>Subjective (needs golden set)</h3>
-            <p>rag, prompt, automl</p>
-            <p>Needs labeled expected outputs. Use <span class="inline-code">eval-init</span> to scaffold.</p>
-          </div>
+        <p>One command. The agent detects what's missing and walks you through it.</p>
+        <div class="loop-diagram">
+          <span class="highlight">/autoimprove</span><br><br>
+          Checking readiness...<br>
+          &nbsp;&nbsp;1. improve.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="highlight">✗</span> Not found → scaffold from repo type<br>
+          &nbsp;&nbsp;2. Scope resolution &nbsp;&nbsp;&nbsp; <span class="highlight">✓</span> Resolved to 3 files. Confirm?<br>
+          &nbsp;&nbsp;3. Eval harness &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="highlight">✗</span> RAG detected → build golden set<br>
+          &nbsp;&nbsp;4. Test suite &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="highlight">✗</span> No tests → generate goal-aware tests<br>
+          &nbsp;&nbsp;5. Git state &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="highlight">✓</span> Clean<br>
+          &nbsp;&nbsp;6. Baseline &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="highlight">✓</span> Score: 0.42, errors: 0%<br><br>
+          Ready. Starting optimization loop.
         </div>
-        <pre><code class="language-bash">/autoimprove eval-init   # scaffold golden set + eval script interactively</code></pre>
       </section>
 
       <!-- 10 DOMAINS -->
@@ -624,14 +622,7 @@ gemini -p "follow program.md"</code></pre>
       <section class="title-slide" data-background="#000">
         <h1><span class="red">Get started</span></h1>
         <div class="red-bar"></div>
-        <pre><code class="language-bash"># 1. Scaffold
-/autoimprove init --type perf
-
-# 2. Bootstrap tests
-/autoimprove bootstrap --generate
-
-# 3. Run
-/autoimprove</code></pre>
+        <pre><code class="language-bash">/autoimprove    # that's it — setup is auto-guided</code></pre>
         <p class="origin" style="margin-top: 2em;">
           <a href="https://github.com/zanetworker/autoimprove">github.com/zanetworker/autoimprove</a>
         </p>

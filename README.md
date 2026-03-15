@@ -7,24 +7,27 @@ Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) 
 ## How it works
 
 ```
-You write improve.md     →  Agent reads it
-                         →  Scaffolds eval if needed (eval-init)
-                         →  Generates safety tests (bootstrap)
-                         →  Establishes baseline score
-                         →  LOOP:
-                              Propose change → git commit (verified)
-                              → run tests → pass? → run benchmark
-                              → check guards → score improved?
-                              → yes: keep → no: git reset
-                              → log experiment → repeat
-                         →  Print summary
+/autoimprove              →  Checks what's ready, what's missing
+                          →  No improve.md? → scaffolds one
+                          →  No eval harness? → builds one interactively
+                          →  No tests? → generates goal-aware tests
+                          →  Establishes baseline score
+                          →  LOOP:
+                               Propose change → git commit (verified)
+                               → run tests → pass? → run benchmark
+                               → check guards → score improved?
+                               → yes: keep → no: git reset
+                               → log experiment → repeat
+                          →  Print summary
 ```
 
-No human in the loop. The agent decides what to try based on your instructions and its own experiment history.
+One command. The agent detects what's missing and walks you through setup before starting the loop. You don't need to know which sub-commands exist.
 
 ## Quick start
 
-1. Create an `improve.md` in your project:
+The fastest path: just run `/autoimprove` in your project. It will detect the repo type, ask you a few questions, and scaffold everything.
+
+Or create an `improve.md` yourself for full control:
 
 ```markdown
 # autoimprove: make-it-faster
@@ -144,50 +147,32 @@ model: sonnet
 
 Everything after `## Instructions` is free-form. Tell the agent what to try, what to avoid, and any domain knowledge that helps.
 
-## Bootstrap — test generation
+## Auto-guided setup
 
-Before running the optimization loop, bootstrap generates a test suite tailored to your optimization goal:
+You don't need to run setup commands manually. `/autoimprove` detects what's missing and walks you through each step:
 
-```bash
-/autoimprove bootstrap           # analyze and suggest tests
-/autoimprove bootstrap --generate  # create the test files
-```
+1. **No improve.md?** Detects repo type and scaffolds one. Supports 10 domain templates: perf, ml, automl, docker, k8s, prompt, sql, frontend, ci, rag.
 
-The key insight: **the optimization goal predicts what the agent will break.**
+2. **No eval harness?** For domains with objective metrics (bytes, seconds), helps write the check command. For domains needing human judgment (RAG, prompt, automl), runs eval-init: scaffolds an eval script, runs the system with sample inputs, asks you to label results, builds a golden set.
 
-- Optimizing for **speed**? The agent will skip edge cases and remove safety checks. Bootstrap generates tests for unicode, nil handling, error messages, and concurrency.
-- Optimizing for **smaller size**? The agent will remove things. Bootstrap tests that features still work and runtime deps are present.
-- Optimizing for **ML accuracy**? The agent will overfit. Bootstrap tests for data leakage, reproducibility, and valid predictions.
-- Optimizing for **RAG quality**? The agent will game retrieval or over-stuff context. Bootstrap tests for answer format consistency, hallucination on out-of-scope questions, and handling of empty retrieval results.
+3. **No tests?** Runs goal-aware bootstrap. The optimization goal predicts what the agent will break:
+   - Speed: tests for unicode, nil, concurrency, error handling
+   - Size: tests for features, runtime deps, health checks
+   - Accuracy: tests for data leakage, reproducibility, valid outputs
+   - RAG: tests for format consistency, hallucination, empty results
 
-Tests are mutable during bootstrap, **immutable during the loop**. Two phases, never mixed.
+4. **Baseline established.** Error rate checked. If >20%, blocks until fixed.
 
-## Eval init — for domains that need a golden set
+5. **Loop starts.**
 
-Some domains have objective metrics (bytes, seconds, pod count). Others need human judgment about what a good result looks like (search relevance, answer quality, prediction accuracy). For the second group, use eval-init:
+Tests are mutable during setup, **immutable during the loop**. Two phases, never mixed.
 
-```bash
-/autoimprove eval-init
-```
-
-This scaffolds an eval script and golden set by running the system with sample inputs, asking you to label the results, and building a test set from your judgments. Needed for: RAG, prompt engineering, AutoML. Not needed for: perf, Docker, frontend, CI, SQL, K8s.
-
-## Templates
-
-Scaffold an `improve.md` for your domain:
+You can still run individual setup steps standalone if you prefer:
 
 ```bash
-/autoimprove init                # auto-detect from repo
-/autoimprove init --type perf    # code performance
-/autoimprove init --type ml      # ML training
-/autoimprove init --type automl  # tabular ML (churn, fraud, scoring)
-/autoimprove init --type docker  # container image size
-/autoimprove init --type k8s     # Kubernetes health
-/autoimprove init --type prompt  # LLM prompt quality
-/autoimprove init --type sql     # SQL query performance
-/autoimprove init --type frontend  # bundle size
-/autoimprove init --type ci      # build/CI speed
-/autoimprove init --type rag     # RAG pipeline (chunking, retrieval, generation)
+/autoimprove init --type rag      # scaffold improve.md
+/autoimprove eval-init            # scaffold eval + golden set
+/autoimprove bootstrap --generate # generate tests
 ```
 
 ## Agent-agnostic

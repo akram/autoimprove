@@ -18,14 +18,21 @@ Autonomous optimization loop. You modify files, run a check, keep improvements, 
 
 | Command | What it does |
 |---------|-------------|
-| `/autoimprove` | Run the loop on `improve.md` in cwd |
-| `/autoimprove <path>` | Run the loop on a specific improve.md |
-| `/autoimprove bootstrap` | Analyze codebase, generate tests needed for safe optimization |
-| `/autoimprove bootstrap --generate` | Create the test files (review before committing) |
-| `/autoimprove eval-init` | Scaffold an eval script and golden set for domains that need them |
+| `/autoimprove` | Auto-detect what's needed, set up missing pieces, then run the loop |
+| `/autoimprove <path>` | Same, but use a specific improve.md |
+| `/autoimprove --export` | Generate agent-agnostic `program.md` |
+
+Individual setup steps can also be run standalone:
+
+| Command | What it does |
+|---------|-------------|
 | `/autoimprove init` | Scaffold an improve.md (auto-detects repo type) |
 | `/autoimprove init --type <type>` | Scaffold for a specific domain |
-| `/autoimprove --export` | Generate agent-agnostic `program.md` |
+| `/autoimprove eval-init` | Scaffold eval script and golden set |
+| `/autoimprove bootstrap` | Analyze codebase, generate goal-aware tests |
+| `/autoimprove bootstrap --generate` | Create the test files |
+
+But you don't need to run these separately. `/autoimprove` detects what's missing and walks you through it.
 
 ## The `improve.md` Format
 
@@ -67,37 +74,80 @@ model: <model to use>
 
 When invoked, follow this protocol exactly:
 
-### Step 1: Parse
+### Step 1: Readiness Check (auto-guided setup)
 
-Read the `improve.md` file. Extract all structured fields from the headers. Everything after `## Instructions` is the domain prompt.
+Run through these checks in order. If anything is missing, offer to fix it inline
+rather than stopping. The user should be able to go from zero to running with a
+single `/autoimprove` invocation.
 
-### Step 2: Validate and Resolve Scope
+```
+Checking readiness...
 
-1. **Resolve scope**: Read the `Change.scope` field.
-   - If it contains explicit paths or globs (e.g., `src/handlers/*.go`): resolve directly
-   - If it contains natural language (e.g., "the template parsing engine"): scan the codebase, identify matching files, and present them for confirmation:
-     ```
-     Resolved scope "the template parsing engine" to:
+1. improve.md
+   ✓ Found improve.md
+   — OR —
+   ✗ No improve.md found.
+     → Detect repo type, offer to scaffold one: "This looks like a [type] project. Create improve.md? [y/n]"
+     → Run the init protocol inline
+     → Continue to next check
+
+2. Scope resolution
+   ✓ Resolved scope "the template parsing engine" to:
        - lib/liquid/parser.rb
        - lib/liquid/lexer.rb
        - lib/liquid/variable.rb
-
      These are the ONLY files that will be modified. Confirm? [y/n]
-     ```
-   - Apply `Change.exclude` to filter out any paths that should not be touched
-   - Once confirmed, the resolved file list is LOCKED for the entire loop
+   — OR —
+   ✗ Scope resolved to 0 files.
+     → Ask user to clarify scope
 
-2. **Validate**:
-   - All resolved files exist
-   - The `Check.run` command is executable
-   - Git working tree is clean (no uncommitted changes)
-   - If `Check.test` is specified, run it — tests must pass before the loop starts
+3. Eval harness
+   ✓ Check command runs successfully
+   — OR —
+   ✗ No check command, or it fails on unmodified code.
+     → Detect if domain needs a golden set (rag, prompt, automl)
+     → If yes: run eval-init protocol inline (scaffold eval + golden set interactively)
+     → If no: help user write the check command
+     → Continue to next check
 
-If validation fails, report the issue and stop.
+4. Test suite
+   ✓ Tests pass (16 passed in 2.1s)
+   — OR —
+   ✗ No test command, or tests fail.
+     → Run bootstrap protocol inline (goal-aware test generation)
+     → Present tests for review, commit them
+     → Continue to next check
 
-If tests don't exist or fail, suggest running `/autoimprove bootstrap` first.
+5. Git state
+   ✓ Working tree is clean
+   — OR —
+   ✗ Uncommitted changes.
+     → "You have uncommitted changes. Commit or stash them before autoimprove can start."
+     → This is the one blocker that can't be auto-fixed. Stop and wait.
 
-If `Check.run` doesn't exist or fails on the unmodified code, suggest running `/autoimprove eval-init` first.
+6. Baseline
+   ✓ Baseline score: 0.4398 (error rate: 0.0%)
+   — OR —
+   ✗ Error rate > 20%
+     → List failing queries. "Fix these errors before starting, or the score is unreliable."
+     → Stop and wait.
+
+Ready. Starting optimization loop.
+```
+
+The key principle: **detect, offer, fix, continue.** Don't stop and tell the user to run a different command. Walk them through setup inline and only block on things that require human judgment (uncommitted changes, golden set labeling).
+
+### Step 1a: Parse
+
+Read the `improve.md` file. Extract all structured fields from the headers. Everything after `## Instructions` is the domain prompt.
+
+### Step 1b: Resolve Scope
+
+Read the `Change.scope` field:
+- If it contains explicit paths or globs: resolve directly
+- If it contains natural language: scan the codebase, identify matching files, present for confirmation
+- Apply `Change.exclude` to filter
+- Once confirmed, the resolved file list is LOCKED for the entire loop
 
 ### Step 2.5: Bootstrap (when invoked via `/autoimprove bootstrap`)
 

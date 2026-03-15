@@ -39,17 +39,18 @@
     }
 
     .reveal h1 { font-size: 2.4em; }
-    .reveal h2 { font-size: 1.6em; }
-    .reveal h3 { font-size: 1.2em; color: var(--rh-gray-light); }
+    .reveal h2 { font-size: 1.4em; margin-bottom: 0; }
+    .reveal h3 { font-size: 1em; color: var(--rh-gray-light); }
 
     .reveal .red { color: var(--rh-red); }
     .reveal .gray { color: var(--rh-gray); }
     .reveal .dim { color: var(--rh-gray-light); }
 
     .reveal p, .reveal li {
-      font-size: 0.75em;
-      line-height: 1.6;
+      font-size: 0.65em;
+      line-height: 1.5;
       color: var(--rh-gray-light);
+      margin: 0.3em 0;
     }
 
     .reveal strong {
@@ -79,10 +80,14 @@
     }
 
     .reveal pre code {
-      font-size: 0.65em;
-      line-height: 1.5;
-      padding: 1em;
-      max-height: 500px;
+      font-size: 0.55em;
+      line-height: 1.4;
+      padding: 0.7em;
+      max-height: 320px;
+    }
+
+    .reveal pre {
+      margin: 0.4em 0;
     }
 
     .reveal .inline-code {
@@ -94,23 +99,23 @@
     }
 
     .reveal table {
-      font-size: 0.65em;
+      font-size: 0.55em;
       border-collapse: collapse;
       width: 100%;
-      margin: 0.5em 0;
+      margin: 0.3em 0;
     }
 
     .reveal table th {
       background: #1A1A1A;
       color: var(--rh-red);
       font-weight: 600;
-      padding: 0.6em 0.8em;
+      padding: 0.4em 0.6em;
       text-align: left;
       border-bottom: 2px solid var(--rh-red);
     }
 
     .reveal table td {
-      padding: 0.5em 0.8em;
+      padding: 0.35em 0.6em;
       border-bottom: 1px solid #222;
       color: var(--rh-gray-light);
     }
@@ -140,21 +145,21 @@
       width: 80px;
       height: 4px;
       background: var(--rh-red);
-      margin: 0.6em 0 1em 0;
+      margin: 0.3em 0 0.6em 0;
       border-radius: 2px;
     }
 
     .reveal .two-col {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 2em;
+      gap: 1em;
       align-items: start;
     }
 
     .reveal .three-col {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: 1.5em;
+      gap: 0.8em;
       align-items: start;
     }
 
@@ -162,26 +167,27 @@
       background: #0D0D0D;
       border: 1px solid #222;
       border-radius: 8px;
-      padding: 1.2em;
+      padding: 0.8em;
     }
 
     .reveal .card h3 {
-      font-size: 0.9em;
-      margin: 0 0 0.5em 0;
+      font-size: 0.8em;
+      margin: 0 0 0.3em 0;
       color: var(--rh-red);
     }
 
     .reveal .card p, .reveal .card li {
-      font-size: 0.65em;
+      font-size: 0.55em;
+      line-height: 1.4;
     }
 
     .reveal .loop-diagram {
       font-family: "Red Hat Mono", monospace;
-      font-size: 0.6em;
-      line-height: 1.8;
+      font-size: 0.55em;
+      line-height: 1.6;
       color: var(--rh-gray-light);
       background: #0A0A0A;
-      padding: 1.2em 1.5em;
+      padding: 0.8em 1.2em;
       border-radius: 8px;
       border: 1px solid #222;
     }
@@ -205,7 +211,7 @@
     .reveal .stat-row {
       display: flex;
       gap: 1.5em;
-      margin: 1em 0;
+      margin: 0.5em 0;
     }
 
     .reveal .stat {
@@ -213,16 +219,16 @@
     }
 
     .reveal .stat .number {
-      font-size: 2em;
+      font-size: 1.6em;
       font-weight: 700;
       color: var(--rh-red);
       font-family: "Red Hat Display", sans-serif;
     }
 
     .reveal .stat .label {
-      font-size: 0.6em;
+      font-size: 0.5em;
       color: var(--rh-gray);
-      margin-top: 0.2em;
+      margin-top: 0.1em;
     }
 
     .reveal .fragment.current-visible.visible:not(.current-fragment) {
@@ -552,14 +558,14 @@ SMOTE for class imbalance, correlation pruning.</code></pre>
             <p>Goal-aware bootstrap caught an FTS5 crash on hyphenated queries before optimization started. The agent never would have found it by tuning scores.</p>
           </div>
         </div>
-        <div class="two-col" style="margin-top: 1em;">
+        <div class="two-col" style="margin-top: 0.5em;">
           <div class="card">
             <h3>Commit per experiment matters</h3>
-            <p>Without individual commits, you can't revert a single experiment. Git is the undo mechanism; skip it and you lose rollback.</p>
+            <p>Without individual commits, you can't revert a single experiment. Git is the undo mechanism.</p>
           </div>
           <div class="card">
             <h3>Equal-score changes are valuable</h3>
-            <p>Guest diversity scored the same but improved UX. Bug fixes don't move the needle. The protocol needed <span class="inline-code">keep_if_equal</span>.</p>
+            <p>Guest diversity scored the same but improved UX. The protocol needed <span class="inline-code">keep_if_equal</span>.</p>
           </div>
         </div>
       </section>

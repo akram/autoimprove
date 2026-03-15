@@ -489,29 +489,80 @@ XGBoost vs LightGBM vs CatBoost, model stacking.</code></pre>
         <p>Goes beyond AutoML: the agent can engineer features, rewrite preprocessing, and try novel model combinations.</p>
       </section>
 
-      <!-- REAL WORLD: PODCAST SEARCH -->
+      <!-- REAL WORLD: ROUND 1 -->
       <section data-background="#000">
-        <h2>Real-world test</h2>
+        <h2>Real-world test: round 1</h2>
         <div class="red-bar"></div>
-        <p>Applied to a <strong>RAG-powered search engine</strong>: hybrid search over 44K chunks from 301 documents.</p>
+        <p>Applied to a <strong>RAG search engine</strong>: hybrid search over 44K chunks, 301 documents, 20-query golden set.</p>
         <div class="stat-row">
           <div class="stat"><div class="number">0.42</div><div class="label">baseline</div></div>
-          <div class="stat"><div class="number">0.44</div><div class="label">final</div></div>
+          <div class="stat"><div class="number">0.44</div><div class="label">after r1</div></div>
           <div class="stat"><div class="number">+4%</div><div class="label">improvement</div></div>
           <div class="stat"><div class="number">6</div><div class="label">experiments</div></div>
-          <div class="stat"><div class="number">2</div><div class="label">kept</div></div>
         </div>
         <table>
           <thead><tr><th>#</th><th>Experiment</th><th>Result</th></tr></thead>
           <tbody>
-            <tr><td>1</td><td>Fix keyword query sanitization</td><td><span style="color:#4CAF50">kept +0.35%</span></td></tr>
-            <tr><td>2</td><td>Adjust hybrid weights + fetch limit</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
-            <tr><td>3</td><td>Reciprocal Rank Fusion (RRF)</td><td><span style="color:#4CAF50">kept +3.6%</span></td></tr>
-            <tr><td>4</td><td>Overlap boost for dual-list results</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
-            <tr><td>5</td><td>Result diversity limit</td><td><span style="color:#4CAF50">kept (equal)</span></td></tr>
-            <tr><td>6</td><td>Lower RRF constant + higher fetch</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
+            <tr><td>1</td><td>Fix keyword query sanitization (special chars crashed)</td><td><span style="color:#4CAF50">kept +0.35%</span></td></tr>
+            <tr><td>2</td><td>Adjust hybrid weights (0.4/0.6) + fetch limit</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
+            <tr><td>3</td><td>Replace weighted merge with Reciprocal Rank Fusion</td><td><span style="color:#4CAF50">kept +3.6%</span></td></tr>
+            <tr><td>4</td><td>Boost results appearing in both retrieval lists</td><td><span style="color:var(--rh-red)">discarded (0%)</span></td></tr>
+            <tr><td>5</td><td>Limit max 2 results per source for diversity</td><td><span style="color:#4CAF50">kept (equal)</span></td></tr>
+            <tr><td>6</td><td>Lower RRF constant (k=30) + 5x fetch</td><td><span style="color:var(--rh-red)">discarded -2.1%</span></td></tr>
           </tbody>
         </table>
+      </section>
+
+      <!-- REAL WORLD: ROUND 2 -->
+      <section data-background="#000">
+        <h2>Real-world test: round 2</h2>
+        <div class="red-bar"></div>
+        <p>Applied the improved protocol (per-experiment commits, guards, keep_if_equal, supersedes).</p>
+        <div class="stat-row">
+          <div class="stat"><div class="number">0.44</div><div class="label">after r1</div></div>
+          <div class="stat"><div class="number">0.46</div><div class="label">after r2</div></div>
+          <div class="stat"><div class="number">+9.3%</div><div class="label">total gain</div></div>
+          <div class="stat"><div class="number">14</div><div class="label">total exps</div></div>
+        </div>
+        <table>
+          <thead><tr><th>#</th><th>Experiment</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>7</td><td>Boost results matching query in source name</td><td><span style="color:var(--rh-red)">discarded -4.8%</span></td></tr>
+            <tr><td>8</td><td>OR-mode keyword search (broader recall)</td><td><span style="color:#4CAF50">kept +1.7%</span></td></tr>
+            <tr><td>9</td><td>Fetch limit 5x</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
+            <tr><td>10</td><td>Better dedup key (120 chars vs 50)</td><td><span style="color:#4CAF50">kept (equal)</span></td></tr>
+            <tr><td>11</td><td>BM25 column weights (content=10x, name=2x)</td><td><span style="color:#4CAF50">kept +0.6%</span></td></tr>
+            <tr><td>12</td><td>Max 1 result per source</td><td><span style="color:var(--rh-red)">discarded</span></td></tr>
+            <tr><td>13</td><td>Query-text overlap boost after RRF</td><td><span style="color:var(--rh-red)">discarded -3.4%</span></td></tr>
+            <tr><td>14</td><td>Fetch limit 4x (supersedes #9)</td><td><span style="color:#4CAF50">kept +2.7%</span></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- WHAT CHANGED -->
+      <section data-background="#000">
+        <h2>What the changes actually do</h2>
+        <div class="red-bar"></div>
+        <div class="two-col">
+          <div class="card">
+            <h3>OR-mode keyword search</h3>
+            <p>Changed "all words must match" to "any word matches." A chunk about "growth loops" now surfaces for "how to run growth experiments" even without the word "experiments." RRF handles the noise: results matching both keyword AND semantic score highest.</p>
+          </div>
+          <div class="card">
+            <h3>BM25 column weights</h3>
+            <p>Keyword matches in content (weight 10) now score 5x higher than matches in metadata (weight 2). Previously a keyword hit in the "chunk_id" column scored the same as a hit in the actual text.</p>
+          </div>
+        </div>
+        <div class="two-col" style="margin-top: 0.5em;">
+          <div class="card">
+            <h3>Fetch limit 4x</h3>
+            <p>With better keyword search (OR-mode + BM25 weights), more candidates are relevant. 4x fetch gives RRF a larger pool without drowning in noise. Guest hit rate went from 35% to 40%.</p>
+          </div>
+          <div class="card">
+            <h3>RRF (from round 1)</h3>
+            <p>Replaced weighted score merge with rank-based fusion. Avoids the normalization problem of comparing BM25 scores with cosine similarity. Single biggest improvement (+3.6%).</p>
+          </div>
+        </div>
       </section>
 
       <!-- LEARNINGS -->
@@ -521,7 +572,7 @@ XGBoost vs LightGBM vs CatBoost, model stacking.</code></pre>
         <div class="two-col">
           <div class="card">
             <h3>The eval harness is the hard part</h3>
-            <p>Building the golden set and eval script took longer than the 6 experiments. Most codebases don't have a measurable score out of the box.</p>
+            <p>Building the golden set and eval script took longer than running 14 experiments. Most codebases don't have a measurable score out of the box.</p>
           </div>
           <div class="card">
             <h3>Tests catch real bugs</h3>
@@ -530,12 +581,12 @@ XGBoost vs LightGBM vs CatBoost, model stacking.</code></pre>
         </div>
         <div class="two-col" style="margin-top: 0.5em;">
           <div class="card">
-            <h3>Commit per experiment matters</h3>
-            <p>Without individual commits, you can't revert a single experiment. Git is the undo mechanism.</p>
+            <h3>Per-experiment commits matter</h3>
+            <p>Round 1 skipped this and lost rollback ability. Round 2 committed every experiment. Clean <span class="inline-code">git reset</span> on every discard.</p>
           </div>
           <div class="card">
-            <h3>Equal-score changes are valuable</h3>
-            <p>Guest diversity scored the same but improved UX. The protocol needed <span class="inline-code">keep_if_equal</span>.</p>
+            <h3>Experiments interact</h3>
+            <p>Fetch 5x failed in round 1 but 4x succeeded in round 2 because OR-mode keyword search changed the quality of candidates. Context matters.</p>
           </div>
         </div>
       </section>

@@ -4,15 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Autoimprove is a Claude Code skill (`SKILL.md`) that implements an autonomous optimization loop. Point it at files to change, a command to check, and a number to improve — then walk away. This is a **documentation-only project** with no source code, build system, or dependencies.
+Autoimprove is a Claude Code plugin that implements an autonomous optimization loop. Point it at files to change, a command to check, and a number to improve — then walk away. This is a **documentation-only project** with no source code, build system, or dependencies.
 
 ## Repository Structure
 
-- `SKILL.md` — The skill definition (core of the project). Defines `/autoimprove` commands, the `improve.md` format, the optimization loop protocol, bootstrap/eval-init phases, 12 domain templates, and hard safety rules.
-- `README.md` — User-facing docs and quick start.
-- `references/protocol.md` — Standalone agent-agnostic protocol (output of `/autoimprove --export`). Any AI agent can follow it without the skill.
-- `references/examples.md` — Complete `improve.md` templates for all 12 domains (perf, ml, docker, k8s, prompt, sql, frontend, ci, automl, rag, skill, image).
-- `docs/index.html` — Reveal.js 5.1.0 presentation (CDN-loaded, Red Hat theme, compact styling to avoid slide overflow).
+```
+autoimprove/
+├── .claude-plugin/
+│   └── plugin.json                      # Plugin manifest
+├── skills/
+│   └── autoimprove/
+│       ├── SKILL.md                     # Skill definition (core of the project)
+│       └── references/
+│           ├── examples.md              # improve.md templates for all 12 domains
+│           └── protocol.md              # Agent-agnostic standalone protocol
+├── README.md                            # User-facing docs and quick start
+├── CLAUDE.md                            # This file
+└── docs/
+    └── index.html                       # Reveal.js presentation
+```
+
+- `skills/autoimprove/SKILL.md` — The skill definition. Defines `/autoimprove` commands, the `improve.md` format, the optimization loop protocol, bootstrap/eval-init phases, 12 domain templates (perf, ml, docker, k8s, prompt, sql, frontend, ci, automl, rag, skill, image), and hard safety rules.
+- `skills/autoimprove/references/protocol.md` — Standalone agent-agnostic protocol (output of `/autoimprove --export`). Any AI agent can follow it without the skill.
+- `skills/autoimprove/references/examples.md` — Complete `improve.md` templates for all 12 domains.
+- `.claude-plugin/plugin.json` — Plugin manifest for installation via `claude plugin install`.
 
 ## Editing Guidelines
 

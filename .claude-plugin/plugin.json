@@ -1,0 +1,10 @@
+{
+  "name": "autoimprove",
+  "version": "1.0.0",
+  "description": "Autonomous optimization loop. Point it at files, a check command, and a score — then walk away. Supports 12 domains: perf, ml, automl, rag, docker, k8s, prompt, sql, frontend, ci, skill, image.",
+  "author": {
+    "name": "zanetworker"
+  },
+  "repository": "https://github.com/zanetworker/autoimprove",
+  "license": "MIT"
+}

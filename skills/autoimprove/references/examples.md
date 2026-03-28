@@ -16,6 +16,8 @@ Complete `improve.md` templates for different domains. Use `/autoimprove init --
 | `ci` | CI/build speed | Build time in seconds | 2-4h |
 | `automl` | Tabular ML (churn, fraud, scoring) | AUC-ROC, F1, accuracy | 4-8h |
 | `rag` | RAG pipeline (retrieval + generation) | Answer relevancy, faithfulness, RAGAS | 4-8h |
+| `skill` | Claude Code skill quality | Eval pass rate, trigger accuracy | 4-8h |
+| `image` | Image generation prompt quality | ImageReward, CLIP Score, aesthetic score | 1-3h |
 
 ## perf — Code Performance
 
@@ -448,3 +450,143 @@ What NOT to try:
 Swap the metric based on what matters most: `faithfulness` to reduce hallucination,
 `context_precision` to improve retrieval accuracy, or a composite RAGAS score for
 overall pipeline quality.
+
+## skill — Claude Code Skill Optimization
+
+Optimizes Claude Code skills — their instructions, examples, trigger descriptions, protocol flow, progressive disclosure, and guard rails. The eval harness runs test prompts through Claude with the skill loaded and grades outputs against assertions. Supports both improving existing skills and building new ones from a minimal skeleton.
+
+Default scope is the entire skill directory (SKILL.md, references/, scripts/, assets/). The user can narrow this in `improve.md`.
+
+```markdown
+# autoimprove: better-<skill-name>
+
+## Change
+scope: <skill-directory>/
+exclude: eval/
+
+## Check
+test: python eval/run_skill_eval.py --check-assertions
+test-files: eval/
+run: python eval/run_skill_eval.py
+score: pass_rate: ([\d.]+)
+goal: higher
+guard: trigger_false_positive: ([\d.]+) < 0.1
+guard: token_usage: (\d+) < 50000
+timeout: 5m
+
+## Stop
+budget: 4h
+target: 0.95
+stale: 15
+
+## Instructions
+
+Improve the skill's quality measured by eval query pass rate.
+The eval runs test prompts through Claude with the skill loaded
+and grades outputs against assertions.
+
+Instruction clarity to try:
+- Replace vague directives with specific, actionable steps
+- Explain the WHY behind ALWAYS/NEVER rules — models follow reasoning better than commands
+- Restructure protocol for clearer decision points and branching
+- Simplify verbose sections — shorter often outperforms longer
+- Use imperative form ("Run the test" not "You should run the test")
+
+Trigger optimization to try:
+- Make description focus on WHEN to trigger, not WHAT the skill does
+- Include specific symptoms, contexts, and user phrases as triggers
+- Add near-miss disambiguation to reduce false positives
+- Slightly pushy descriptions combat under-triggering
+
+Example quality to try:
+- One excellent example beats many mediocre ones
+- Examples should be complete, from real scenarios, well-commented
+- Remove examples that duplicate the same pattern
+- Add examples for failure modes agents hit repeatedly
+
+Progressive disclosure to try:
+- Move rarely-needed content from SKILL.md body to references/
+- Keep SKILL.md under 500 lines — reference files for the rest
+- Bundle repeated helper code into scripts/ directory
+- Cross-reference instead of duplicating content across files
+
+Guard rails to try:
+- Close specific loopholes, not just state rules
+- Add rationalization tables for discipline-enforcing rules
+- Preempt "spirit vs letter" workarounds with explicit reasoning
+- Build from observed agent failure patterns in eval runs
+
+What NOT to try:
+- Don't modify eval queries or assertions
+- Don't overfit to specific eval cases — skill must generalize
+- Don't add model-specific behavior
+- Don't exceed 500 lines in SKILL.md without progressive disclosure
+- Don't repeat content that exists in referenced skills or files
+```
+
+## image — Image Generation Prompt Optimization
+
+Optimizes image generation prompts — the text passed to any image generation model (DALL-E, Flux, Stable Diffusion, Midjourney, or custom pipelines). The generation method and evaluation method are both agnostic: the user provides their own `run:` command that calls their pipeline and produces a score.
+
+Image generation is stochastic — the same prompt produces different quality images across runs. The eval harness should generate multiple images with fixed seeds and average scores to reduce variance.
+
+```markdown
+# autoimprove: better-<task>-images
+
+## Change
+scope: prompts/<task>.txt
+exclude: eval/, data/
+
+## Check
+test: python eval/validate_prompt.py --prompt prompts/<task>.txt
+test-files: eval/
+run: python eval/run_image_eval.py --prompt prompts/<task>.txt
+score: image_reward: ([\d.-]+)
+goal: higher
+guard: clip_score: ([\d.]+) > 0.20
+guard: nsfw_count: (\d+) < 1
+timeout: 5m
+
+## Stop
+budget: 2h
+target: 1.5
+stale: 10
+
+## Instructions
+
+Improve the image generation prompt to produce higher-quality images
+that better match the intended subject and style.
+
+The eval harness generates multiple images from the prompt and
+averages their scores to reduce variance from stochastic generation.
+
+Prompt structure to try:
+- Add specific medium/style (oil painting, cinematic photography, 3D render, watercolor)
+- Specify lighting (golden hour, studio lighting, rim light, dramatic shadows)
+- Add composition cues (rule of thirds, shallow depth of field, close-up, wide angle)
+- Include mood/atmosphere (ethereal, dramatic, serene, gritty, cinematic)
+- Specify color palette (warm tones, muted pastels, high contrast, monochromatic)
+- Add artistic references for style anchoring
+
+Prompt refinement to try:
+- Reorder — put the most important detail first
+- Replace vague words with specific descriptors
+- Add negative context via phrasing ("without text or watermarks")
+- Simplify — shorter prompts often outperform verbose ones
+- Add few concrete details rather than many abstract ones
+- Test: comma-separated keywords vs natural language prose
+
+What NOT to try:
+- Don't exceed ~200 tokens (diminishing returns, each word contributes less)
+- Don't include model-specific syntax (--ar, (weight:1.5)) unless targeting that model
+- Don't include NSFW or harmful content
+- Don't hardcode for specific random seeds in the prompt text
+- Keep the core subject and intent stable across iterations
+```
+
+Common scoring options:
+- **ImageReward** (pip: `image-reward`): Best correlation with human preference. Scores range ~-2 to +2.
+- **HPS v2** (pip: `hpsv2`): Strong generalization across styles. 83% accuracy predicting human preferences.
+- **CLIP Score** (`torchmetrics.multimodal.CLIPScore`): Measures prompt-image alignment. Good as a guard metric.
+- **LAION Aesthetic Score**: Lightweight (linear layer on CLIP). Good for coarse quality filtering.
+- **MLLM-as-Judge**: GPT-4o or Claude evaluating images. Expensive but explainable. Best for periodic checkpoints.

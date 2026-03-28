@@ -105,7 +105,7 @@ Checking readiness...
    ✓ Check command runs successfully
    — OR —
    ✗ No check command, or it fails on unmodified code.
-     → Detect if domain needs a golden set (rag, prompt, automl)
+     → Detect if domain needs a golden set (rag, prompt, automl, skill)
      → If yes: run eval-init protocol inline (scaffold eval + golden set interactively)
      → If no: help user write the check command
      → Continue to next check
@@ -207,6 +207,24 @@ This is a separate pre-loop phase. It generates the test suite needed for safe o
    - Output length/verbosity stays reasonable (gaming token limits)
    - No hardcoded responses for known eval cases
 
+   **When goal = higher skill quality (pass rate on eval queries):**
+   The agent will overfit to eval queries, add excessive verbosity, game trigger descriptions, or weaken generalizability.
+   - Trigger false positives: near-miss queries that should NOT trigger the skill still don't
+   - Trigger false negatives: queries that SHOULD trigger the skill still do
+   - Protocol compliance: agent follows steps in the correct order when skill is invoked
+   - Hard rule adherence: skill's safety constraints are respected in output
+   - Token efficiency: skill body stays under 500 lines; progressive disclosure used for the rest
+   - Generalization: skill works on held-out queries not in the eval set (60/40 train/test split)
+
+   **When goal = higher image quality (ImageReward, aesthetic score, human preference):**
+   The agent will game the scoring metric, bloat prompts with excessive detail, overfit to specific generation parameters, or produce unsafe content.
+   - Prompt length stays under practical limit (~200 tokens — diminishing returns beyond this)
+   - Core subject and intent unchanged across iterations
+   - No NSFW, harmful, or policy-violating content in prompts
+   - Prompt produces valid output through the generation pipeline (no errors)
+   - Style consistency maintained if a target style is specified
+   - No model-specific syntax unless the user is explicitly targeting a specific model
+
 3. **Gap analysis**: Cross-reference existing tests with the goal-aware threat model:
    - **Critical gaps**: Failure modes with NO test coverage — these must be filled
    - **Weak coverage**: Tests exist but don't cover edge cases for this goal
@@ -276,6 +294,8 @@ Not every domain needs this. Use the table below to decide.
 | `ci` | No | No | Build time is objective |
 | `sql` | No | No | Query time is objective |
 | `k8s` | No | No | Pod health is objective |
+| `skill` | Yes | Yes | Skill quality needs eval queries with assertions graded by running through Claude |
+| `image` | Optional | Yes | Can use automated metrics (ImageReward, CLIP) or golden set with human labels |
 
 #### Eval Init Protocol (for domains that need it)
 
@@ -537,8 +557,10 @@ Detection heuristics:
 - `*.sql` files → `sql`
 - `package.json` with build script → `frontend`
 - `.github/workflows/` → `ci`
+- `SKILL.md` file + `eval/` directory with assertion files or `references/` directory → `skill`
+- Python files importing `diffusers`/`replicate`/`stability_sdk`, or Python files with openai image generation calls, or `prompts/` directory + eval scripts referencing `image_reward`/`clip_score`/`aesthetic_score`/`hpsv2` → `image`
 
-For domains that need eval scaffolding (rag, prompt, automl), also suggest running `/autoimprove eval-init` after init.
+For domains that need eval scaffolding (rag, prompt, automl, skill), also suggest running `/autoimprove eval-init` after init. For `image`, eval-init is optional (automated metrics can work without a golden set).
 
 See `references/examples.md` for all templates.
 
@@ -992,3 +1014,120 @@ This works for any RAG system — internal knowledge bases, customer support bot
 documentation search, legal document retrieval, or code search. The score metric
 can be swapped: use `faithfulness` to reduce hallucination, `context_precision` to
 improve retrieval, or a composite RAGAS score for overall quality.
+
+### Example 11: Claude Code Skill Optimization
+
+```markdown
+# autoimprove: better-code-review-skill
+
+## Change
+scope: skills/code-review/
+exclude: eval/
+
+## Check
+test: python eval/run_skill_eval.py --check-assertions
+test-files: eval/
+run: python eval/run_skill_eval.py
+score: pass_rate: ([\d.]+)
+goal: higher
+guard: trigger_false_positive: ([\d.]+) < 0.1
+guard: token_usage: (\d+) < 50000
+timeout: 5m
+
+## Stop
+budget: 4h
+target: 0.95
+stale: 15
+
+## Instructions
+
+Improve the code review skill's pass rate on the eval benchmark.
+The eval set contains 20 queries: 10 should-trigger (code review requests)
+and 10 should-not-trigger (refactoring, debugging, general questions).
+
+The skill currently triggers correctly but produces inconsistent output —
+sometimes skips the security check step, sometimes gives overly verbose
+feedback on trivial issues.
+
+Instruction clarity to try:
+- Make the protocol steps more explicit with decision points
+- Add examples of good vs bad review feedback
+- Simplify the security checklist — too many items causes skipping
+- Add "when to be brief" guidance for trivial findings
+
+Trigger optimization to try:
+- Current description triggers on "look at my code" (too broad)
+- Add disambiguation: code review vs code explanation vs debugging
+
+What NOT to try:
+- Don't modify the eval queries or expected behaviors
+- Don't add dependencies on other skills
+- Don't make the skill model-specific
+```
+
+This works for any Claude Code skill — debugging helpers, code generators, testing
+workflows, documentation assistants, or deployment skills. The eval harness runs
+test prompts through Claude with the skill loaded and grades outputs against
+assertions. The default scope is the entire skill directory; narrow it in improve.md
+if you want to lock specific files. Skills can be both improved from existing
+definitions and built from minimal skeletons — the loop itself is the creator.
+
+### Example 12: Image Generation Prompt Optimization
+
+```markdown
+# autoimprove: better-product-photos
+
+## Change
+scope: prompts/product-hero.txt
+exclude: eval/, assets/
+
+## Check
+run: python eval/run_image_eval.py --prompt prompts/product-hero.txt --num-images 4 --seeds 42,123,456,789
+score: image_reward: ([\d.-]+)
+goal: higher
+guard: clip_score: ([\d.]+) > 0.22
+guard: nsfw_count: (\d+) < 1
+timeout: 5m
+
+## Stop
+budget: 2h
+target: 1.2
+stale: 10
+
+## Instructions
+
+Improve the product photography prompt for e-commerce hero images.
+The current prompt produces acceptable but bland product shots.
+Target: professional-quality product photography with clean backgrounds.
+
+The eval generates 4 images with fixed seeds and averages ImageReward scores.
+CLIP score guards prompt-image alignment.
+
+Prompt structure to try:
+- Specify photography style (commercial product photography, editorial, lifestyle)
+- Lighting: softbox, natural window light, gradient background
+- Add material descriptors for the product (matte, glossy, textured)
+- Composition: centered, negative space, shallow DOF with bokeh
+- Color: neutral background, complementary accent colors
+
+Refinement to try:
+- Start with the product description, then add environment/style
+- "Professional product photography" as an anchor phrase
+- Specify what the background should be (not just "clean background")
+- Add one aspirational reference ("as seen in Apple product pages")
+
+What NOT to try:
+- Don't add humans or lifestyle elements (product-only shots)
+- Don't specify exact pixel dimensions in the prompt
+- Don't reference specific photographer names
+- Keep prompt under 150 tokens for product shots
+```
+
+This works for any image generation task — product photography, marketing assets,
+UI illustrations, concept art, or social media content. The generation method is
+agnostic: the user provides their own eval harness that calls their pipeline
+(DALL-E, Flux, Stable Diffusion, Midjourney, or custom). Image generation is
+stochastic, so the eval should generate multiple images with fixed seeds and
+average the scores to reduce variance. Common scoring options: ImageReward
+(best human preference correlation), HPS v2, CLIP Score (alignment), or
+LAION Aesthetic Score.

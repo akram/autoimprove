@@ -151,15 +151,17 @@ Everything after `## Instructions` is free-form. Tell the agent what to try, wha
 
 You don't need to run setup commands manually. `/autoimprove` detects what's missing and walks you through each step:
 
-1. **No improve.md?** Detects repo type and scaffolds one. Supports 10 domain templates: perf, ml, automl, docker, k8s, prompt, sql, frontend, ci, rag.
+1. **No improve.md?** Detects repo type and scaffolds one. Supports 12 domain templates: perf, ml, automl, docker, k8s, prompt, sql, frontend, ci, rag, skill, image.
 
-2. **No eval harness?** For domains with objective metrics (bytes, seconds), helps write the check command. For domains needing human judgment (RAG, prompt, automl), runs eval-init: scaffolds an eval script, runs the system with sample inputs, asks you to label results, builds a golden set.
+2. **No eval harness?** For domains with objective metrics (bytes, seconds), helps write the check command. For domains needing human judgment (RAG, prompt, automl, skill), runs eval-init: scaffolds an eval script, runs the system with sample inputs, asks you to label results, builds a golden set. For image, eval-init is optional (automated metrics like ImageReward can work without a golden set).
 
 3. **No tests?** Runs goal-aware bootstrap. The optimization goal predicts what the agent will break:
    - Speed: tests for unicode, nil, concurrency, error handling
    - Size: tests for features, runtime deps, health checks
    - Accuracy: tests for data leakage, reproducibility, valid outputs
    - RAG: tests for format consistency, hallucination, empty results
+   - Skill quality: tests for trigger accuracy, protocol compliance, generalization
+   - Image quality: tests for prompt length, subject preservation, safety, pipeline validity
 
 4. **Baseline established.** Error rate checked. If >20%, blocks until fixed.
 

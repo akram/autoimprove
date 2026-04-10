@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "autoimprove-marketplace",
+  "description": "Autonomous optimization loop for AI agents. Describe what to improve, how to measure it, and walk away.",
+  "owner": {
+    "name": "zanetworker"
+  },
+  "plugins": [
+    {
+      "name": "autoimprove",
+      "description": "Autonomous optimization loop. Point it at files, a check command, and a score — then walk away. Supports 12 domains: perf, ml, automl, rag, docker, k8s, prompt, sql, frontend, ci, skill, image.",
+      "category": "development",
+      "source": "./skills/autoimprove",
+      "homepage": "https://github.com/zanetworker/autoimprove",
+      "author": {
+        "name": "zanetworker"
+      }
+    }
+  ]
+}
